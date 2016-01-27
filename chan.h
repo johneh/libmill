@@ -80,8 +80,10 @@ struct mill_chan {
     size_t items;
     size_t first;
 
+#if 0
     /* Debugging info. */
     struct mill_debug_chan debug;
+#endif
 };
 
 /* This structure represents a single clause in a choose statement.

@@ -66,11 +66,13 @@ struct mill_cr {
     /* If the coroutine is waiting for a deadline, it uses this timer. */
     struct mill_timer timer;
 
+#ifdef MILLDEBUG
     /* When the coroutine is blocked in fdwait(), these members contains the
        file descriptor and events that the function waits for. They are used
        only for debugging purposes. */
     int fd;
     int events;
+#endif
 
     /* This structure is used when the coroutine is executing a choose
        statement. */
@@ -82,24 +84,16 @@ struct mill_cr {
     /* Argument to resume() call being passed to the blocked suspend() call. */
     int result;
 
-    /* If size of the valbuf needs to be larger than mill_valbuf size it is
-       allocated dyncamically and the pointer, along with the size of the buffer
-       is stored here. */
-    void *valbuf;
-    size_t valbuf_sz;
-
     /* Coroutine-local storage. */
     void *cls;
-
+#if 0
     /* Debugging info. */
     struct mill_debug_cr debug;
+#else
+    /* List of all coroutines */
+    struct mill_list_item item;
+#endif
 };
-
-/* Fake coroutine corresponding to the main thread of execution. */
-extern struct mill_cr mill_main;
-
-/* The coroutine that is running at the moment. */
-extern struct mill_cr *mill_running;
 
 /* Suspend running coroutine. Move to executing different coroutines. Once
    someone resumes this coroutine using mill_resume function 'result' argument
@@ -114,5 +108,53 @@ void mill_resume(struct mill_cr *cr, int result);
 /* Returns pointer to the value buffer. The returned buffer is guaranteed
    to be at least 'size' bytes long. */
 void *mill_valbuf(struct mill_cr *cr, size_t size);
+
+typedef struct {
+    /* Fake coroutine corresponding to the main thread of execution. */
+    struct mill_cr main;
+
+    /* The coroutine that is running at the moment. */
+    struct mill_cr *running;
+
+    int num_cr;
+
+    /* list of all coroutines */
+    struct mill_list all_crs;
+
+    int counter;
+    int choose_seqnum;
+
+    /* Queue of coroutines scheduled for execution. */
+    struct mill_slist ready;
+
+/* A stack of unused coroutine stacks. This allows for extra-fast allocation
+   of a new stack. The FIFO nature of this structure minimises cache misses.
+   When the stack is cached its mill_slist_item is placed on its top rather
+   then on the bottom. That way we minimise page misses. */
+    int num_cached_stacks;
+    struct mill_slist cached_stacks;
+
+    /* Global linked list of all timers. The list is ordered.
+    First timer to be resume comes first and so on. */
+    struct mill_list timers;
+    /* Pollset used for waiting for file descriptors. */
+    int pollset_size;
+    int pollset_capacity;
+    struct pollfd *pollset_fds;
+
+    /* The item at a specific index in this array corresponds to the entry
+    in mill_pollset fds with the same index. */
+    struct mill_pollset_item *pollset_items;
+
+/* Size of the buffer for temporary storage of values received from channels.
+   It should be properly aligned and never change if there are any stacks
+   allocated at the moment. */
+    size_t valbuf_size;    /* = 128 */
+
+    /* Valbuf for tha main coroutine. */
+    char main_valbuf[128];
+} mill_t;
+
+extern __thread mill_t *mill;
 
 #endif

@@ -40,9 +40,6 @@ static void mill_poller_clean(int fd);
 static int mill_poller_wait(int timeout);
 static pid_t mill_fork(void);
 
-/* If 1, mill_poller_init was already called. */
-static int mill_poller_initialised = 0;
-
 pid_t mfork(void) {
     return mill_fork();
 }
@@ -57,27 +54,25 @@ static void mill_poller_callback(struct mill_timer *timer) {
 }
 
 int mill_fdwait(int fd, int events, int64_t deadline, const char *current) {
-    if(mill_slow(!mill_poller_initialised)) {
-        mill_poller_init();
-        mill_assert(errno == 0);
-        mill_poller_initialised = 1;
-    }
+    mill_assert(mill != NULL);
     /* If required, start waiting for the timeout. */
     if(deadline >= 0)
-        mill_timer_add(&mill_running->timer, deadline, mill_poller_callback);
+        mill_timer_add(&mill->running->timer, deadline, mill_poller_callback);
     /* If required, start waiting for the file descriptor. */
     if(fd >= 0)
         mill_poller_add(fd, events);
     /* Do actual waiting. */
-    mill_running->state = fd < 0 ? MILL_MSLEEP : MILL_FDWAIT;
-    mill_running->fd = fd;
-    mill_running->events = events;
-    mill_set_current(&mill_running->debug, current);
+    mill->running->state = fd < 0 ? MILL_MSLEEP : MILL_FDWAIT;
+#ifdef MILLDEBUG
+    mill->running->fd = fd;
+    mill->running->events = events;
+#endif
+    mill_set_current(&mill->running->debug, current);
     int rc = mill_suspend();
     /* Handle file descriptor events. */
     if(rc >= 0) {
         if(deadline >= 0)
-            mill_timer_rm(&mill_running->timer);
+            mill_timer_rm(&mill->running->timer);
         return rc;
     }
     /* Handle the timeout. Clean-up the pollset. */
@@ -87,20 +82,10 @@ int mill_fdwait(int fd, int events, int64_t deadline, const char *current) {
 }
 
 void fdclean(int fd) {
-    if(mill_slow(!mill_poller_initialised)) {
-        mill_poller_init();
-        mill_assert(errno == 0);
-        mill_poller_initialised = 1;
-    }
     mill_poller_clean(fd);
 }
 
 void mill_wait(int block) {
-    if(mill_slow(!mill_poller_initialised)) {
-        mill_poller_init();
-        mill_assert(errno == 0);
-        mill_poller_initialised = 1;
-    }
     while(1) {
         /* Compute timeout for the subsequent poll. */
         int timeout = block ? mill_timer_next() : 0;
@@ -119,6 +104,10 @@ void mill_wait(int block) {
 
 /* Include the poll-mechanism-specific stuff. */
 
+/* FIXME: epoll and kqueue */
+#include "poll.inc"
+
+#if 0
 /* User overloads. */
 #if defined MILL_EPOLL
 #include "epoll.inc"
@@ -134,4 +123,4 @@ void mill_wait(int block) {
 #else
 #include "poll.inc"
 #endif
-
+#endif

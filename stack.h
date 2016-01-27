@@ -27,15 +27,10 @@
 
 #include <stddef.h>
 
-/* Purges all the existing cached stacks and preallocates 'count' new stacks
-   of size 'stack_size'. Sets errno in case of error. */
-void mill_preparestacks(int count, size_t stack_size);
-
-/* Allocates new stack. Returns pointer to the *top* of the stack.
-   For now we assume that the stack grows downwards. */
-void *mill_allocstack(void);
+void *mill_allocstackmem(void);
 
 /* Deallocates a stack. The argument is pointer to the top of the stack. */
 void mill_freestack(void *stack);
 
+void mill_purgestacks(void);
 #endif

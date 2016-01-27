@@ -28,6 +28,12 @@
 #include "list.h"
 #include "utils.h"
 
+/* Cause panic. */
+void mill_panic(const char *text);
+
+#if MILLDEBUG
+struct mill_cr;
+
 struct mill_debug_cr {
     /* List of all coroutines. */
     struct mill_list_item item;
@@ -39,6 +45,8 @@ struct mill_debug_cr {
     const char *current;
 };
 
+struct mill_chan;
+
 struct mill_debug_chan {
     /* List of all channels. */
     struct mill_list_item item;
@@ -48,17 +56,15 @@ struct mill_debug_chan {
     const char *created;
 };
 
-/* Cause panic. */
-void mill_panic(const char *text);
 
 /* No-op, but ensures that debugging functions get compiled into the binary. */
 void mill_preserve_debug(void);
 
 /* (Un)register coroutines and channels with the debugging subsystem. */
-void mill_register_cr(struct mill_debug_cr *cr, const char *created);
-void mill_unregister_cr(struct mill_debug_cr *cr);
-void mill_register_chan(struct mill_debug_chan *ch, const char *created);
-void mill_unregister_chan(struct mill_debug_chan *ch);
+void mill_register_cr(struct mill_cr *coro, const char *created);
+void mill_unregister_cr(struct mill_cr *coro);
+void mill_register_chan(struct mill_chan *c, const char *created);
+void mill_unregister_chan(struct mill_chan *c);
 
 /* While doing a blocking operation coroutine should register where
    the operation was invoked from. */
@@ -72,5 +78,15 @@ void mill_trace_(const char *location, const char *format, ...);
 
 /* Returns 1 if there are any coroutines running, 0 otherwise. */
 int mill_hascrs(void);
+#endif
+
+#define mill_preserve_debug() /* nothing */
+#define mill_register_cr(x, y) /* nothing */
+#define mill_unregister_cr(x) /* nothing */
+#define mill_register_chan(x, y) /* nothing */
+#define mill_unregister_chan(x) /* nothing */
+#define mill_set_current(x, y)  /* nothing */
+#define mill_trace(x, y, ...) /* nothing */
+#define mill_hascrs() /* nothing */
 
 #endif

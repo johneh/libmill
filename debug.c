@@ -36,6 +36,7 @@
 #include "stack.h"
 #include "utils.h"
 
+#ifdef MILLDEBUG
 /* ID to be assigned to next launched coroutine. */
 static int mill_next_cr_id = 1;
 
@@ -49,12 +50,8 @@ static int mill_next_chan_id = 1;
 /* List of all channels. */
 static struct mill_list mill_all_chans = {0};
 
-void mill_panic(const char *text) {
-    fprintf(stderr, "panic: %s\n", text);
-    abort();
-}
-
-void mill_register_cr(struct mill_debug_cr *cr, const char *created) {
+void mill_register_cr(struct mill_cr *coro, const char *created) {
+    struct mill_debug_cr *cr = &coro->debug;
     mill_list_insert(&mill_all_crs, &cr->item, NULL);
     cr->id = mill_next_cr_id;
     ++mill_next_cr_id;
@@ -62,18 +59,21 @@ void mill_register_cr(struct mill_debug_cr *cr, const char *created) {
     cr->current = NULL;
 }
 
-void mill_unregister_cr(struct mill_debug_cr *cr) {
+void mill_unregister_cr(struct mill_cr *coro) {
+    struct mill_debug_cr *cr = &coro->debug;
     mill_list_erase(&mill_all_crs, &cr->item);
 }
 
-void mill_register_chan(struct mill_debug_chan *ch, const char *created) {
+void mill_register_chan(chan c, const char *created) {
+    struct mill_debug_chan *ch = &c->debug;
     mill_list_insert(&mill_all_chans, &ch->item, NULL);
     ch->id = mill_next_chan_id;
     ++mill_next_chan_id;
     ch->created = created;
 }
 
-void mill_unregister_chan(struct mill_debug_chan *ch) {
+void mill_unregister_chan(chan c) {
+    struct mill_debug_chan *ch = &c->debug;
     mill_list_erase(&mill_all_chans, &ch->item);
 }
 
@@ -249,4 +249,9 @@ int mill_hascrs(void) {
     return (mill_all_crs.first == &mill_main.debug.item &&
         mill_all_crs.last == &mill_main.debug.item) ? 0 : 1;
 }
+#endif
 
+void mill_panic(const char *text) {
+    fprintf(stderr, "panic: %s\n", text);
+    abort();
+}

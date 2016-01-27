@@ -31,6 +31,7 @@
 static mach_timebase_info_data_t mill_mtid = {0};
 #endif
 
+#include "cr.h"
 #include "libmill.h"
 #include "timer.h"
 #include "utils.h"
@@ -94,10 +95,6 @@ int64_t now(void) {
 #endif
 }
 
-/* Global linked list of all timers. The list is ordered.
-   First timer to be resume comes first and so on. */
-static struct mill_list mill_timers = {0};
-
 void mill_timer_add(struct mill_timer *timer, int64_t deadline,
       mill_timer_callback callback) {
     mill_assert(deadline >= 0);
@@ -105,7 +102,7 @@ void mill_timer_add(struct mill_timer *timer, int64_t deadline,
     timer->callback = callback;
     /* Move the timer into the right place in the ordered list
        of existing timers. TODO: This is an O(n) operation! */
-    struct mill_list_item *it = mill_list_begin(&mill_timers);
+    struct mill_list_item *it = mill_list_begin(&mill->timers);
     while(it) {
         struct mill_timer *tm = mill_cont(it, struct mill_timer, item);
         /* If multiple timers expire at the same momemt they will be fired
@@ -114,34 +111,34 @@ void mill_timer_add(struct mill_timer *timer, int64_t deadline,
             break;
         it = mill_list_next(it);
     }
-    mill_list_insert(&mill_timers, &timer->item, it);
+    mill_list_insert(&mill->timers, &timer->item, it);
 }
 
 void mill_timer_rm(struct mill_timer *timer) {
-    mill_list_erase(&mill_timers, &timer->item);
+    mill_list_erase(&mill->timers, &timer->item);
 }
 
 int mill_timer_next(void) {
-    if(mill_list_empty(&mill_timers))
+    if(mill_list_empty(&mill->timers))
         return -1;
     int64_t nw = now();
-    int64_t expiry = mill_cont(mill_list_begin(&mill_timers),
+    int64_t expiry = mill_cont(mill_list_begin(&mill->timers),
         struct mill_timer, item)->expiry;
     return (int) (nw >= expiry ? 0 : expiry - nw);
 }
 
 int mill_timer_fire(void) {
     /* Avoid getting current time if there are no timers anyway. */
-    if(mill_list_empty(&mill_timers))
+    if(mill_list_empty(&mill->timers))
         return 0;
     int64_t nw = now();
     int fired = 0;
-    while(!mill_list_empty(&mill_timers)) {
+    while(!mill_list_empty(&mill->timers)) {
         struct mill_timer *tm = mill_cont(
-            mill_list_begin(&mill_timers), struct mill_timer, item);
+            mill_list_begin(&mill->timers), struct mill_timer, item);
         if(tm->expiry > nw)
             break;
-        mill_list_erase(&mill_timers, mill_list_begin(&mill_timers));
+        mill_list_erase(&mill->timers, mill_list_begin(&mill->timers));
         if(tm->callback)
             tm->callback(tm);
         fired = 1;

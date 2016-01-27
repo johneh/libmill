@@ -73,6 +73,10 @@ void mill_poller_init(void) {
     errno = 0;
 }
 
+void mill_poller_fini(void) {
+    /* FIXME */
+}
+
 pid_t mill_fork(void) {
     pid_t pid = fork();
     if(pid != 0)
@@ -110,13 +114,13 @@ static void mill_poller_add(int fd, int events) {
         if(crp->in)
             mill_panic(
                 "multiple coroutines waiting for a single file descriptor");
-        crp->in = mill_running;
+        crp->in = mill->running;
     }
     if(events & FDW_OUT) {
         if(crp->out)
             mill_panic(
                 "multiple coroutines waiting for a single file descriptor");
-        crp->out = mill_running;
+        crp->out = mill->running;
     }
     if(!crp->next) {
         crp->next = mill_changelist;

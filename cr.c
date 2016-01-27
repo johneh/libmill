@@ -25,6 +25,7 @@
 #include <errno.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "cr.h"
 #include "debug.h"
@@ -33,94 +34,63 @@
 #include "stack.h"
 #include "utils.h"
 
-/* Size of the buffer for temporary storage of values received from channels.
-   It should be properly aligned and never change if there are any stacks
-   allocated at the moment. */
-size_t mill_valbuf_size = 128;
-
-/* Valbuf for tha main coroutine. */
-char mill_main_valbuf[128];
+__thread mill_t *mill = NULL;
 
 volatile int mill_unoptimisable1 = 1;
 volatile void *mill_unoptimisable2 = NULL;
 
-struct mill_cr mill_main = {0};
-
-struct mill_cr *mill_running = &mill_main;
-
-/* Queue of coroutines scheduled for execution. */
-static struct mill_slist mill_ready = {0};
-
-static void *mill_getvalbuf(struct mill_cr *cr, size_t size) {
-    /* Small valbufs don't require dynamic allocation. Also note that main
-       coroutine doesn't have a stack allocated on the heap like other
-       coroutines, so we have to handle valbuf in a special way. */
-    if(mill_fast(cr != &mill_main)) {
-        if(mill_fast(size <= mill_valbuf_size))
-            return (void*)(((char*)cr) - mill_valbuf_size);
+static void *mill_getvalbuf(struct mill_cr *cr) {
+    if(mill_fast(cr != &mill->main)) {
+            return (void*)(((char*)cr) - mill->valbuf_size);
     }
-    else {
-        if(mill_fast(size <= sizeof(mill_main_valbuf)))
-            return (void*)mill_main_valbuf;
-    }
-    /* Large valbufs are simply allocated on heap. */
-    if(mill_fast(cr->valbuf && cr->valbuf_sz <= size))
-        return cr->valbuf;
-    void *ptr = realloc(cr->valbuf, size);
-    if(!ptr)
-        return NULL;
-    cr->valbuf = ptr;
-    cr->valbuf_sz = size;
-    return cr->valbuf;
+    return (void*)mill->main_valbuf;
 }
 
-void goprepare(int count, size_t stack_size, size_t val_size) {
-    if(mill_slow(mill_hascrs())) {errno = EAGAIN; return;}
-    /* Allocate any resources needed by the polling mechanism. */
-    mill_poller_init();
-    if(mill_slow(errno != 0)) return;
-    /* If needed, make val size slightly bigger to align properly. */
-    mill_valbuf_size = (val_size + 15) & ~((size_t)0xf);
-    /* Preallocate the valbuf for the main coroutine. */
-    if(mill_slow(!mill_getvalbuf(&mill_main, mill_valbuf_size))) {
-        errno = ENOMEM; return;}
-    /* Allocate the stacks. */
-    mill_preparestacks(count, stack_size + mill_valbuf_size +
-        sizeof(struct mill_cr));
+/* Allocates new stack. Returns pointer to the *top* of the stack.
+   For now we assume that the stack grows downwards. */
+void *mill_allocstack(void) {
+    if(!mill_slist_empty(&mill->cached_stacks)) {
+        --mill->num_cached_stacks;
+        return (void*)(mill_slist_pop(&mill->cached_stacks) + 1);
+    }
+    void *ptr = mill_allocstackmem();
+    if(!ptr)
+        mill_panic("not enough memory to allocate coroutine stack");
+    return ptr;
 }
 
 int mill_suspend(void) {
     /* Even if process never gets idle, we have to process external events
        once in a while. The external signal may very well be a deadline or
        a user-issued command that cancels the CPU intensive operation. */
-    static int counter = 0;
-    if(counter >= 103) {
+    struct mill_cr *mill_running = mill->running;
+    if(mill->counter >= 103) {
         mill_wait(0);
-        counter = 0;
+        mill->counter = 0;
     }
     /* Store the context of the current coroutine, if any. */
     if(mill_running && mill_setjmp(&mill_running->ctx))
         return mill_running->result;
     while(1) {
         /* If there's a coroutine ready to be executed go for it. */
-        if(!mill_slist_empty(&mill_ready)) {
-            ++counter;
-            struct mill_slist_item *it = mill_slist_pop(&mill_ready);
-            mill_running = mill_cont(it, struct mill_cr, ready);
+        if(!mill_slist_empty(&mill->ready)) {
+            ++mill->counter;
+            struct mill_slist_item *it = mill_slist_pop(&mill->ready);
+            mill->running = mill_running = mill_cont(it, struct mill_cr, ready);
             mill_jmp(&mill_running->ctx);
         }
         /* Otherwise, we are going to wait for sleeping coroutines
            and for external events. */
         mill_wait(1);
-        mill_assert(!mill_slist_empty(&mill_ready));
-        counter = 0;
+        mill_assert(!mill_slist_empty(&mill->ready));
+        mill->counter = 0;
     }
 }
 
 void mill_resume(struct mill_cr *cr, int result) {
     cr->result = result;
     cr->state = MILL_READY;
-    mill_slist_push_back(&mill_ready, &cr->ready);
+    mill_slist_push_back(&mill->ready, &cr->ready);
 }
 
 /* The intial part of go(). Starts the new coroutine.
@@ -129,33 +99,38 @@ void *mill_go_prologue(const char *created) {
     /* Ensure that debug functions are available whenever a single go()
        statement is present in the user's code. */
     mill_preserve_debug();
+    mill_assert(mill != NULL);
     /* Allocate and initialise new stack. */
     struct mill_cr *cr = ((struct mill_cr*)mill_allocstack()) - 1;
-    mill_register_cr(&cr->debug, created);
-    cr->valbuf = NULL;
-    cr->valbuf_sz = 0;
+    /* mill_register_cr(cr, created); */
+    mill_list_insert(&mill->all_crs, &cr->item, NULL);
     cr->cls = NULL;
+#ifdef MILLDEBUG
     cr->fd = -1;
     cr->events = 0;
+#endif
+    mill->num_cr++;
     mill_trace(created, "{%d}=go()", (int)cr->debug.id);
     /* Suspend the parent coroutine and make the new one running. */
-    if(mill_setjmp(&mill_running->ctx))
+    if(mill_setjmp(&mill->running->ctx))
         return NULL;
-    mill_resume(mill_running, 0);    
-    mill_running = cr;
+    mill_resume(mill->running, 0);
+    mill->running = cr;
     /* Return pointer to the top of the stack. There's valbuf interposed
        between the mill_cr structure and the stack itself. */
-    return (void*)(((char*)cr) - mill_valbuf_size);
+    return (void*)(((char*)cr) - mill->valbuf_size);
 }
 
 /* The final part of go(). Cleans up after the coroutine is finished. */
 void mill_go_epilogue(void) {
+    struct mill_cr *mill_running = mill->running;
     mill_trace(NULL, "go() done");
-    mill_unregister_cr(&mill_running->debug);
-    if(mill_running->valbuf)
-        free(mill_running->valbuf);
+    /* mill_unregister_cr(mill_running); */
+    mill_list_erase(&mill->all_crs, &mill_running->item);
+
     mill_freestack(mill_running + 1);
-    mill_running = NULL;
+    mill->num_cr--;
+    mill->running = NULL;
     /* Given that there's no running coroutine at this point
        this call will never return. */
     mill_suspend();
@@ -163,25 +138,48 @@ void mill_go_epilogue(void) {
 
 void mill_yield(const char *current) {
     mill_trace(current, "yield()");
-    mill_set_current(&mill_running->debug, current);
+    mill_set_current(&mill->running->debug, current);
     /* This looks fishy, but yes, we can resume the coroutine even before
        suspending it. */
-    mill_resume(mill_running, 0);
+    mill_resume(mill->running, 0);
     mill_suspend();
 }
 
+/* XXX: max size fixed at 128 */
 void *mill_valbuf(struct mill_cr *cr, size_t size) {
-    void *ptr = mill_getvalbuf(cr, size);
-    if(!ptr)
-        mill_panic("not enough memory to receive from channel");
-    return ptr;
+    mill_assert(size <= 128);
+    return mill_getvalbuf(cr);
 }
 
 void *cls(void) {
-    return mill_running->cls;
+    return mill->running->cls;
 }
 
 void setcls(void *val) {
-    mill_running->cls = val;
+    mill->running->cls = val;
 }
 
+/* TODO: stacksize argument */
+void *mill_init(void) {
+    mill = malloc(sizeof (mill_t));
+    if (! mill)
+        return NULL;
+    memset(mill, '\0', sizeof (mill_t));
+    struct mill_cr *mill_main = &mill->main;
+    mill->valbuf_size = 128;
+    mill->all_crs.first = &mill_main->item;
+    mill->all_crs.last = &mill_main->item;
+    mill->running = mill_main;
+
+    mill_poller_init();
+    return mill;
+}
+
+void mill_free(void) {
+    if (mill) {
+        mill_poller_fini();
+        mill_purgestacks();
+        free(mill);
+        mill = NULL;
+    }
+}
