@@ -390,3 +390,5 @@ void mill_chdone(chan ch, void *val, size_t sz, const char *current) {
     }
 }
 
+#include "tchan.c"
+

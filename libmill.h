@@ -374,6 +374,28 @@ MILL_EXPORT mfile mill_mfout(void);
 MILL_EXPORT mfile mill_mferr(void);
 
 /******************************************************************************/
+/* Thread library                                                             */
+/******************************************************************************/
+
+typedef struct tchan_s *tchan;
+
+MILL_EXPORT tchan tchmake(unsigned sz);
+MILL_EXPORT tchan tchdup(tchan tch);
+MILL_EXPORT void tchclose(tchan tch);
+MILL_EXPORT int tchdone(tchan tch);
+MILL_EXPORT void *tch_recv(tchan tch, size_t size, int *done);
+MILL_EXPORT void tch_send(tchan tch, void *ptr, size_t size, int *done);
+
+#define tchs(tch, type, val, done) \
+do {\
+    type xval_ = val; \
+    tch_send(tch, & xval_, sizeof (type), done); \
+} while (0)
+
+#define tchr(tch, type, done) \
+    (*((type *)tch_recv(tch, sizeof (type), done)))
+
+/******************************************************************************/
 /*  Debugging                                                                 */
 /******************************************************************************/
 
