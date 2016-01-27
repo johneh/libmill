@@ -3,6 +3,8 @@
 #include <pthread.h>
 #include "libmill.h"
 
+/* Example: Single producer and multiple consumers */
+
 coroutine static void dot(char c, int k, int *done) {
     while (! *done) {
         printf("%c", c);
