@@ -29,7 +29,9 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/uio.h>
 
 /******************************************************************************/
 /*  ABI versioning support                                                    */
@@ -395,6 +397,19 @@ do {\
 
 #define tchr(tch, type, done) \
     (*((type *)tch_recv(tch, sizeof (type), done)))
+
+
+MILL_EXPORT int open_a(const char *path, int flags, mode_t mode);
+MILL_EXPORT int close_a(int fd);
+MILL_EXPORT int stat_a(const char *path, struct stat *buf);
+MILL_EXPORT ssize_t pread_a(int fd, void *buf, size_t count, off_t offset);
+MILL_EXPORT ssize_t pwrite_a(int fd, const void *buf, size_t count, off_t offset);
+MILL_EXPORT int unlink_a(const char *path);
+MILL_EXPORT ssize_t readv_a(int fd, const struct iovec *iov, int iovcnt);
+MILL_EXPORT ssize_t writev_a(int fd, const struct iovec *iov, int iovcnt);
+
+typedef void (*fn_task)(void *);
+/* MILL_EXPORT int task_a(fn_task tf, void *da);*/
 
 /******************************************************************************/
 /*  Debugging                                                                 */
