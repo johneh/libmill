@@ -85,6 +85,7 @@ MILL_EXPORT int64_t now(void);
 /******************************************************************************/
 MILL_EXPORT void *mill_init(void);
 MILL_EXPORT void mill_free(void);
+MILL_EXPORT void mill_waitfor(void);
 
 #define goprepare(x, y, z) /* nothing */
 

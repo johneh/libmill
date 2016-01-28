@@ -124,6 +124,8 @@ typedef struct {
     int counter;
     int choose_seqnum;
 
+    int waitfor;
+
     /* Queue of coroutines scheduled for execution. */
     struct mill_slist ready;
 

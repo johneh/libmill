@@ -29,8 +29,7 @@ static void *consume(void *p) {
         printf("\n\t worker %d => %d\t", consumer_id, val);
         fflush(stdout);
     }
-
-    msleep(now()+100);
+    mill_waitfor();
     mill_free();
     return NULL;
 }
@@ -67,7 +66,7 @@ int main(void) {
     }
 
     done = 1;    /* signal the goroutine to quit */
-    msleep(now()+50);
+    mill_waitfor();
     tchclose(tch);
     printf("\n");
     mill_free();

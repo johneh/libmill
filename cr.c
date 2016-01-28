@@ -131,6 +131,10 @@ void mill_go_epilogue(void) {
     mill_freestack(mill_running + 1);
     mill->num_cr--;
     mill->running = NULL;
+    if (mill->waitfor && mill->num_cr == 0) {
+        mill->waitfor = 0;
+        mill_resume(&mill->main, mill->num_cr);
+    }
     /* Given that there's no running coroutine at this point
        this call will never return. */
     mill_suspend();
@@ -181,5 +185,14 @@ void mill_free(void) {
         mill_purgestacks();
         free(mill);
         mill = NULL;
+    }
+}
+
+void mill_waitfor(void) {
+    if (mill->running != &mill->main)
+        mill_panic("waitfor invoked in a non-main coroutine");
+    if (mill->num_cr > 0) {
+        mill->waitfor = 1;
+        mill_suspend();
     }
 }
