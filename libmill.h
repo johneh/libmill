@@ -408,8 +408,8 @@ MILL_EXPORT int unlink_a(const char *path);
 MILL_EXPORT ssize_t readv_a(int fd, const struct iovec *iov, int iovcnt);
 MILL_EXPORT ssize_t writev_a(int fd, const struct iovec *iov, int iovcnt);
 
-typedef void (*fn_task)(void *);
-/* MILL_EXPORT int task_a(fn_task tf, void *da);*/
+typedef void (*task_func)(void *);
+MILL_EXPORT int task_run(task_func fn, void *data, int64_t deadline);
 
 /******************************************************************************/
 /*  Debugging                                                                 */
