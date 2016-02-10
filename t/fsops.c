@@ -119,12 +119,13 @@ int main(void) {
     struct stat sbuf;
     int rc = stat_a("../cr.c", &sbuf);
     pr_stat("../cr.c", &sbuf, rc == -1 ? errno : 0);
-#if 0
+#if 1
     done = 1;
     mill_waitfor();
-#endif
+#else
     msleep(now() + 250);
     done = 1;
+#endif
     msleep(now() + 25);
     mill_free();
     return 0;

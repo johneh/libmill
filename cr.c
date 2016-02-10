@@ -72,6 +72,10 @@ int mill_suspend(void) {
         mill_wait(0);
         mill->counter = 0;
     }
+    if(mill->counter >= 23 && mill->num_tasks >= 23) {
+        mill_wait(0);
+        mill->counter = 0;
+    }
     /* Store the context of the current coroutine, if any. */
     if(mill_running && mill_setjmp(&mill_running->ctx))
         return mill_running->result;
@@ -135,7 +139,13 @@ void mill_go_epilogue(void) {
     mill_freestack(mill_running + 1);
     mill->num_cr--;
     mill->running = NULL;
-    if (mill->waitfor && mill->num_cr == 0) {
+    if (mill->waitfor &&
+        (mill->num_cr == 0
+                || (mill->num_cr == 1
+                    && mill->tasks_fd[0] != -1
+                    && mill->num_tasks <= 0)
+        )
+    ) {
         mill->waitfor = 0;
         mill_resume(&mill->main, mill->num_cr);
     }
@@ -192,7 +202,7 @@ void mill_free(void) {
             (void) close(mill->tasks_fd[0]);
             (void) close(mill->tasks_fd[1]);
         }
-        mill_purgestacks();
+        /* mill_purgestacks(); */
         free(mill);
         mill = NULL;
     }

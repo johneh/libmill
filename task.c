@@ -126,11 +126,12 @@ static ssize_t queue_task(task_s *req, int64_t deadline) {
     tchs(mill_tasks, task_s *, req, NULL);
     mill->num_tasks++;
 
-    if(deadline >= 0)
+    if (deadline >= 0)
         mill_timer_add(&mill->running->timer, deadline, mill_task_timedout);
 
     if (-1 == mill_suspend()) {
-        if (__sync_bool_compare_and_swap(&req->errcode, TASK_QUEUED, TASK_TIMEDOUT)) {
+        if (__sync_bool_compare_and_swap(&req->errcode,
+                                TASK_QUEUED, TASK_TIMEDOUT)) {
             mill->num_tasks--;
             errno = ETIMEDOUT;
             /* task struct will be freed by the worker */
@@ -350,7 +351,8 @@ void init_workers(void) {
     pthread_attr_setdetachstate(& attr, PTHREAD_CREATE_DETACHED);
     for (i = 0; i < NUM_WORKER; i++) {
         workers[i].req_ch = tchdup(mill_tasks);
-        rc = pthread_create(& workers[i].pth, & attr, worker_func, workers[i].req_ch);
+        rc = pthread_create(& workers[i].pth, & attr,
+                            worker_func, workers[i].req_ch);
         mill_assert(rc == 0);
     }
     pthread_attr_destroy(& attr);

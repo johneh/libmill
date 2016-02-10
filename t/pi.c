@@ -41,6 +41,7 @@ int main(void) {
     go(do_pi(100,-1));
     go(do_pi(500000, now()+5));
     go(do_pi(1000000, now()+10));
-    msleep(now()+1000);
+    /* msleep(now()+1000); */
+    mill_waitfor();
     return 0;
 }
