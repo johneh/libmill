@@ -103,7 +103,6 @@ static ssize_t queue_task(a_task *req) {
     ssize_t ret = 0;
     switch (req->code) {
     case tOPEN:
-        mfree(req->path, strlen(req->path)+1);
         ret = req->ofd;
         break;
     case tPREAD: case tPWRITE: case tREADV: case tWRITEV:
@@ -111,7 +110,6 @@ static ssize_t queue_task(a_task *req) {
         ret = req->ssz;
         break;
     case tSTAT: case tUNLINK:
-        mfree(req->path, strlen(req->path)+1);
         /* fall through */
     default:
         if (errcode)
@@ -123,15 +121,10 @@ static ssize_t queue_task(a_task *req) {
     return ret;
 }
 
-#define path_copy(from, to) do {\
-size_t plen = strlen(from); \
-to = mmalloc(plen+1); \
-memcpy(to, from, plen+1); } while(0)
-
 int stat_a(const char *path, struct stat *buf) {
     a_task *req = mmalloc(sizeof (a_task));
     req->code = tSTAT;
-    path_copy(path, req->path);
+    req->path = (char *) path;
     req->buf = (void *) buf;
     return queue_task(req);
 }
@@ -139,7 +132,7 @@ int stat_a(const char *path, struct stat *buf) {
 int open_a(const char *path, int flags, mode_t mode) {
     a_task *req = mmalloc(sizeof (a_task));
     req->code = tOPEN;
-    path_copy(path, req->path);
+    req->path = (char *) path;
     req->flags = flags;
     req->mode = mode;
     return queue_task(req);
@@ -175,7 +168,7 @@ ssize_t pwrite_a(int fd, const void *buf, size_t count, off_t offset) {
 int unlink_a(const char *path) {
     a_task *req = mmalloc(sizeof (a_task));
     req->code = tUNLINK;
-    path_copy(path, req->path);
+    req->path = (char *) path;
     return queue_task(req);
 }
 
