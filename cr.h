@@ -126,7 +126,7 @@ typedef struct {
 
     int waitfor;
 
-    struct tchan_s *finished_tasks;
+    int tasks_fd[2];
     int num_tasks;
 
     /* Queue of coroutines scheduled for execution. */

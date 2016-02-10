@@ -31,7 +31,6 @@ static tchan mill_tasks;  /* global task queue */
 
 typedef struct {
     enum task_code code;
-    tchan chres;    /* tell worker where to send the response */
     void *cr;   /* task coroutine */
 
     /* input and/or output */
@@ -57,6 +56,7 @@ typedef struct {
         int ofd;
         ssize_t ssz;
     };
+    int res_fd; /* tell worker where to send the response */
 } a_task;
 
 
@@ -73,31 +73,50 @@ static void zfree(void *ptr, size_t size) {
     free(ptr);
 }
 
-coroutine static void wait_task(tchan ch) {
+coroutine static void wait_task(int fd) {
+    unsigned size = sizeof(a_task *);
+    a_task *res;
     while (1) {
-        int done = 0;
-        a_task *res = tchr(ch, a_task *, &done);
-        mill_assert(!done);
-        /* if (done)
-            break; */
-        mill->num_tasks--;
-        mill_resume(res->cr, 1);
+        int n = (int) read(fd, (void *) & res, size);
+        if (n == size) {
+            mill->num_tasks--;
+            mill_resume(res->cr, 1);
+            continue;
+        }
+        mill_assert(n < 0);
+        if (errno == EINTR)
+            continue;
+        /* EAGAIN -- pipe capacity execeeded ? */
+        mill_assert(errno == EAGAIN);
+        fdwait(fd, FDW_IN, -1);
     }
 }
 
 static ssize_t queue_task(a_task *req) {
-    /* (thread-local) response channel */
-    if (! mill->finished_tasks) {
-        mill->finished_tasks = tchmake(sizeof (a_task *));
-        go(wait_task(mill->finished_tasks));
+    mill_assert(mill != NULL);
+    /* Using pipe for notification of finished tasks */
+    if (mill->tasks_fd[0] == -1) {
+        if (-1 == pipe(mill->tasks_fd)) {
+            mfree(req, sizeof (a_task));
+            return -1;
+        }
+        int flag = fcntl(mill->tasks_fd[0], F_GETFL);
+        if (flag == -1)
+            flag = 0;
+        (void) fcntl(mill->tasks_fd[0], F_SETFL, flag|O_NONBLOCK);
+        flag = fcntl(mill->tasks_fd[1], F_GETFL);
+        if (flag == -1)
+            flag = 0;
+        (void) fcntl(mill->tasks_fd[1], F_SETFL, flag|O_NONBLOCK);
+        go(wait_task(mill->tasks_fd[0]));
     }
-    req->chres = tchdup(mill->finished_tasks);
+
+    req->res_fd = mill->tasks_fd[1];
     req->cr = mill->running;
     tchs(mill_tasks, a_task *, req, NULL);
     mill->num_tasks++;
     (void) mill_suspend();
     req->cr = NULL;
-    tchclose(req->chres);
 
     int errcode = req->errcode;
     ssize_t ret = 0;
@@ -200,6 +219,23 @@ int task_a(fn_task tf, void *da) {
 }
 #endif
 
+static int signal_task(int fd, a_task *res) {
+    int size = sizeof (a_task *);
+    while (1) {
+        int n = (int) write(fd, (void *) & res, size);
+        if (n == size)
+            break;
+        mill_assert(n < 0);
+        if (errno == EINTR)
+            continue;
+        /* EAGAIN -- pipe capacity execeeded ? */
+        if (errno != EAGAIN)
+            return -1;
+        fdwait(fd, FDW_OUT, -1);
+    }
+    return 0;
+}
+
 static void *worker_func(void *p) {
     tchan chreq = p;
     int done = 0;
@@ -256,7 +292,8 @@ static void *worker_func(void *p) {
         default:
             mill_panic("worker_func(): received unexpected code");
         }
-        tchs(req->chres, a_task *, res, NULL);
+        if (-1 == signal_task(req->res_fd, res))
+            mfree(res, sizeof (a_task));
     }
 
     mill_free();

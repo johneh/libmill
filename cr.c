@@ -174,6 +174,7 @@ void *mill_init(void) {
     if (! mill)
         return NULL;
     memset(mill, '\0', sizeof (mill_t));
+    mill->tasks_fd[0] = mill->tasks_fd[1] = -1;
     struct mill_cr *mill_main = &mill->main;
     mill->valbuf_size = 128;
     mill->all_crs.first = &mill_main->item;
@@ -187,6 +188,10 @@ void *mill_init(void) {
 void mill_free(void) {
     if (mill) {
         mill_poller_fini();
+        if (mill->tasks_fd[0] != -1) {
+            (void) close(mill->tasks_fd[0]);
+            (void) close(mill->tasks_fd[1]);
+        }
         mill_purgestacks();
         free(mill);
         mill = NULL;
