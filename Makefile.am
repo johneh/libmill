@@ -48,6 +48,7 @@ libmill_la_SOURCES = \
     slist.c \
     stack.h \
     stack.c \
+	task.h \
 	task.c \
     tcp.c \
     timer.h \

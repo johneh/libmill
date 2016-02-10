@@ -26,6 +26,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
+#include <pthread.h>
 
 #include "cr.h"
 #include "debug.h"
@@ -33,6 +34,9 @@
 #include "poller.h"
 #include "stack.h"
 #include "utils.h"
+#include "task.h"
+
+static pthread_once_t taskq_initialized = PTHREAD_ONCE_INIT;
 
 __thread mill_t *mill = NULL;
 
@@ -165,6 +169,7 @@ void setcls(void *val) {
 
 /* TODO: stacksize argument */
 void *mill_init(void) {
+    (void) pthread_once(&taskq_initialized, init_workers);
     mill = malloc(sizeof (mill_t));
     if (! mill)
         return NULL;

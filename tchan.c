@@ -92,36 +92,27 @@ static void unlock(struct channel_p *ch) {
 
 static int pipe_read(struct channel_p *ch, void *ptr) {
     unsigned size = ch->sz;
-    do {
-        fdwait(ch->fd[0], FDW_IN, -1);
-        /* more than one thread may receive notification, race for the lock */
-        if (! trylock(ch))  /* multi-core machine ? */
-            continue;
-        int total = 0;
-        while (1) {
-            int n = (int) read(ch->fd[0], (char *) ptr + total,
-                        size - total);
-            if (n > 0) {
-                total += n;
-                if (total == size) {
-                    unlock(ch);
-                    return total;
-                }
-            } else if (n < 0) {
-                if (errno == EINTR)
-                    continue;
-                if (errno != EAGAIN) {
-                    unlock(ch);
-                    return -1;
-                }
-            } else {
-                /* closed -- done */
-                unlock(ch);
-                return 0;
+    while (1) {
+        if (trylock(ch)) {
+            int n = (int) read(ch->fd[0], ptr,  size);
+            unlock(ch);
+            if (n == 0  /* closed -- done */
+                || n == size
+            ) {
+                return n;
             }
-            fdwait(ch->fd[0], FDW_IN, -1);
+            mill_assert(n < 0);
+            if (errno == EINTR)
+                continue;
+            if (errno != EAGAIN)
+                return -1;
         }
-    } while (1);
+
+        fdwait(ch->fd[0], FDW_IN, -1);
+
+        /* more than one thread may receive notification,
+         * race for the lock */
+    }
 }
 
 static int pipe_write(struct channel_p *ch, void *ptr) {

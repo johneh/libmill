@@ -8,13 +8,12 @@
 #include "libmill.h"
 #include "cr.h"
 #include "utils.h"
+#include "task.h"
 
 static void *zmalloc(size_t sz);
 static void zfree(void *ptr, size_t sz);
 void *(*mmalloc)(size_t size) = zmalloc;  
 void (*mfree)(void *ptr, size_t size) = zfree;
-
-static void init_workers(tchan wch);
 
 enum task_code {
     tTASK = 1,
@@ -28,7 +27,7 @@ enum task_code {
     tWRITEV,
 };
 
-static tchan req_tasks;  /* request channel (global) */
+static tchan mill_tasks;  /* global task queue */
 
 typedef struct {
     enum task_code code;
@@ -87,12 +86,6 @@ coroutine static void wait_task(tchan ch) {
 }
 
 static ssize_t queue_task(a_task *req) {
-    /* global request channel */
-    if (! req_tasks) { /* XXX: racy! */
-        req_tasks = tchmake(sizeof (a_task *));
-        init_workers(req_tasks);
-    }
-
     /* (thread-local) response channel */
     if (! mill->finished_tasks) {
         mill->finished_tasks = tchmake(sizeof (a_task *));
@@ -100,7 +93,7 @@ static ssize_t queue_task(a_task *req) {
     }
     req->chres = tchdup(mill->finished_tasks);
     req->cr = mill->running;
-    tchs(req_tasks, a_task *, req, NULL);
+    tchs(mill_tasks, a_task *, req, NULL);
     mill->num_tasks++;
     (void) mill_suspend();
     req->cr = NULL;
@@ -287,14 +280,16 @@ struct worker {
 #endif
 static struct worker workers[NUM_WORKER];
 
-static void init_workers(tchan wch) {
-    int i;
+void init_workers(void) {
+    int i, rc;
     pthread_attr_t attr;
-    int rc = pthread_attr_init(&attr);
+
+    mill_tasks = tchmake(sizeof (a_task *));
+    rc = pthread_attr_init(&attr);
     mill_assert(rc == 0);
     pthread_attr_setdetachstate(& attr, PTHREAD_CREATE_DETACHED);
     for (i = 0; i < NUM_WORKER; i++) {
-        workers[i].req_ch = tchdup(wch);
+        workers[i].req_ch = tchdup(mill_tasks);
         rc = pthread_create(& workers[i].pth, & attr, worker_func, workers[i].req_ch);
         mill_assert(rc == 0);
     }
