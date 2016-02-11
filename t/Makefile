@@ -1,6 +1,6 @@
 CC = gcc
 CFLAGS = -Wall -c -O2 -g -I../
-BINS = prodcon1 prodcon2 fsops pi
+BINS = prodcon1 prodcon2 fsops pi tchoose
 LIBMILL = libmill.a
 
 all: clean $(LIBMILL) $(BINS)
@@ -16,6 +16,9 @@ fsops: fsops.o
 
 pi: pi.o
 	$(CC) -o $@ $^ $(LIBMILL) -pthread -lm
+
+tchoose: tchoose.o
+	$(CC) -o $@ $^ $(LIBMILL) -pthread
 
 libmill.a:
 	@files=`for p in ../*.o; do echo $$p; done | awk -vORS=' ' '1'`; \
