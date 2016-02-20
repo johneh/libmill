@@ -121,7 +121,7 @@ int main(void) {
     pr_stat("../cr.c", &sbuf, rc == -1 ? errno : 0);
 #if 1
     done = 1;
-    mill_waitfor();
+    waitgroup_wait(NULL);
 #else
     msleep(now() + 250);
     done = 1;

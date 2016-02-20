@@ -24,9 +24,10 @@ void calc_pi(void *q) {
     s->pi = 4.0 * hit / s->n;
 }
 
-coroutine void do_pi(int n, int64_t deadline) {
+coroutine void do_pi(waitgroup *wg, int n, int64_t deadline) {
     struct pi_s s;
     s.n = n;
+    waitgroup_add(wg);
     if (-1 == task_run(calc_pi, &s, deadline))
         printf("pi (n = %d) Cancelled\n", n);
     else
@@ -34,14 +35,15 @@ coroutine void do_pi(int n, int64_t deadline) {
 }
 
 int main(void) {
+    waitgroup wg = WAITGROUP_INITIALIZER;
     mill_init();
-    go(do_pi(100000, -1));
-    go(do_pi(10000, -1));
-    go(do_pi(1000, -1));
-    go(do_pi(100,-1));
-    go(do_pi(500000, now()+5));
-    go(do_pi(1000000, now()+10));
+    go(do_pi(&wg, 100000, -1));
+    go(do_pi(&wg, 10000, -1));
+    go(do_pi(&wg, 1000, -1));
+    go(do_pi(&wg, 100,-1));
+    go(do_pi(&wg, 500000, now()+5));
+    go(do_pi(&wg, 1000000, now()+10));
     /* msleep(now()+1000); */
-    mill_waitfor();
+    waitgroup_wait(&wg);
     return 0;
 }

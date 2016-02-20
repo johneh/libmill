@@ -28,7 +28,7 @@ static void *produce(void *p) {
     }
 
     done = 1;
-    mill_waitfor();
+    waitgroup_wait(NULL);
     mill_free();
     return NULL;
 }
@@ -70,7 +70,7 @@ int main(void) {
     }
 
     done = 1;    /* signal the goroutine to quit */
-    mill_waitfor();
+    waitgroup_wait(NULL);
     tchclose(tch);
     printf("\n");
     mill_free();

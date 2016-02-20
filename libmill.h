@@ -87,7 +87,6 @@ MILL_EXPORT int64_t now(void);
 /******************************************************************************/
 MILL_EXPORT void *mill_init(void);
 MILL_EXPORT void mill_free(void);
-MILL_EXPORT void mill_waitfor(void);
 
 #define goprepare(x, y, z) /* nothing */
 
@@ -410,6 +409,22 @@ MILL_EXPORT ssize_t writev_a(int fd, const struct iovec *iov, int iovcnt);
 
 typedef void (*task_func)(void *);
 MILL_EXPORT int task_run(task_func fn, void *data, int64_t deadline);
+
+/******************************************************************************/
+/*  Wait group                                                                */
+/******************************************************************************/
+
+struct mill_cr;
+
+typedef struct mill_waitgroup {
+    int counter;
+    struct mill_cr *waiter;
+} waitgroup;
+
+MILL_EXPORT extern waitgroup WAITGROUP_INITIALIZER;
+
+MILL_EXPORT void waitgroup_add(waitgroup *wg);
+MILL_EXPORT int waitgroup_wait(waitgroup *wg);
 
 /******************************************************************************/
 /*  Debugging                                                                 */

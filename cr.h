@@ -43,6 +43,8 @@ enum mill_state {
     MILL_CHOOSE
 };
 
+struct mill_waitgroup;
+
 /* The coroutine. The memory layout looks like this:
 
    +----------------------------------------------------+--------+---------+
@@ -80,6 +82,8 @@ struct mill_cr {
 
     /* Stored coroutine context while it is not executing. */
     struct mill_ctx ctx;
+
+    struct mill_waitgroup *wg;
 
     /* Argument to resume() call being passed to the blocked suspend() call. */
     int result;
@@ -124,7 +128,7 @@ typedef struct {
     int counter;
     int choose_seqnum;
 
-    int waitfor;
+    int waitmain;
 
     int tasks_fd[2];
     int num_tasks;

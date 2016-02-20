@@ -113,6 +113,7 @@ void *mill_go_prologue(const char *created) {
     /* mill_register_cr(cr, created); */
     mill_list_insert(&mill->all_crs, &cr->item, NULL);
     cr->cls = NULL;
+    cr->wg = NULL;
 #ifdef MILLDEBUG
     cr->fd = -1;
     cr->events = 0;
@@ -133,20 +134,27 @@ void *mill_go_prologue(const char *created) {
 void mill_go_epilogue(void) {
     struct mill_cr *mill_running = mill->running;
     mill_trace(NULL, "go() done");
+    if (mill_running->wg) {
+        waitgroup *wg = mill_running->wg;
+        if (--wg->counter <= 0 && wg->waiter) {
+            mill_resume(wg->waiter, 0);
+            wg->waiter = NULL;
+        }
+    }
     /* mill_unregister_cr(mill_running); */
     mill_list_erase(&mill->all_crs, &mill_running->item);
 
     mill_freestack(mill_running + 1);
     mill->num_cr--;
     mill->running = NULL;
-    if (mill->waitfor &&
+    if (mill->waitmain &&
         (mill->num_cr == 0
                 || (mill->num_cr == 1
                     && mill->tasks_fd[0] != -1
                     && mill->num_tasks <= 0)
         )
     ) {
-        mill->waitfor = 0;
+        mill->waitmain = 0;
         mill_resume(&mill->main, mill->num_cr);
     }
     /* Given that there's no running coroutine at this point
@@ -208,11 +216,38 @@ void mill_free(void) {
     }
 }
 
-void mill_waitfor(void) {
-    if (mill->running != &mill->main)
-        mill_panic("waitfor invoked in a non-main coroutine");
-    if (mill->num_cr > 0) {
-        mill->waitfor = 1;
+waitgroup WAITGROUP_INITIALIZER = {0, NULL};
+
+void waitgroup_add(waitgroup *wg) {
+    /* ignore main; replace current group if any */
+    if (mill->running != &mill->main) {
+        if (mill->running->wg)
+            mill->running->wg->counter--;
+        wg->counter++;
+        mill->running->wg = wg;
+    }
+}
+
+int waitgroup_wait(waitgroup *wg) {
+    if (wg == NULL) {
+        if (mill->running != &mill->main) {
+            errno = EDEADLK;
+            return -1;
+        }
+        if (mill->num_cr > 0) {
+            mill->waitmain = 1;
+            mill_suspend();
+        }
+        return 0;
+    }
+
+    if (wg == mill->running->wg) {
+        errno = EDEADLK;
+        return -1;
+    }
+    if (wg->counter > 0) {
+        wg->waiter = mill->running;
         mill_suspend();
     }
+    return 0;
 }
