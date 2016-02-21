@@ -85,6 +85,10 @@ static void mill_task_timedout(struct mill_timer *timer) {
 coroutine static void wait_task(int fd) {
     unsigned size = sizeof(task_s *);
     task_s *res;
+
+    /* Adjust counter to exclude this coroutine */
+    mill->num_cr--;
+
     while (1) {
         int n = (int) read(fd, (void *) & res, size);
         if (n == size) {
@@ -95,7 +99,6 @@ coroutine static void wait_task(int fd) {
         mill_assert(n < 0);
         if (errno == EINTR)
             continue;
-        /* EAGAIN -- pipe capacity execeeded ? */
         mill_assert(errno == EAGAIN);
         fdwait(fd, FDW_IN, -1);
     }

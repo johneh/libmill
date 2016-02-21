@@ -147,15 +147,10 @@ void mill_go_epilogue(void) {
     mill_freestack(mill_running + 1);
     mill->num_cr--;
     mill->running = NULL;
-    if (mill->waitmain &&
-        (mill->num_cr == 0
-                || (mill->num_cr == 1
-                    && mill->tasks_fd[0] != -1
-                    && mill->num_tasks <= 0)
-        )
-    ) {
+    if (mill->waitmain && mill->num_cr == 0) {
+        mill_assert(mill->num_tasks == 0);
         mill->waitmain = 0;
-        mill_resume(&mill->main, mill->num_cr);
+        mill_resume(&mill->main, 0);
     }
     /* Given that there's no running coroutine at this point
        this call will never return. */
@@ -230,6 +225,7 @@ void waitgroup_add(waitgroup *wg) {
 
 int waitgroup_wait(waitgroup *wg) {
     if (wg == NULL) {
+        /* wait for all other coroutines in main */
         if (mill->running != &mill->main) {
             errno = EDEADLK;
             return -1;
