@@ -250,7 +250,9 @@ ipaddr iplocal(const char *name, int port, int mode) {
 }
 
 ipaddr ipremote(const char *name, int port, int mode, int64_t deadline) {
+    struct dns_resolver *resolver;
     int rc;
+    static int using_mill_resolver = 0;
     ipaddr addr = mill_ipliteral(name, port, mode);
     if(errno == 0)
        return addr;
@@ -267,6 +269,15 @@ ipaddr ipremote(const char *name, int port, int mode, int64_t deadline) {
             mill_dns_hints, NULL, dns_opts(), &rc);
         mill_assert(mill_dns_resolver);
     }
+    if(using_mill_resolver) {
+        resolver = dns_res_open(mill_dns_conf, mill_dns_hosts,
+            mill_dns_hints, NULL, dns_opts(), &rc);
+        mill_assert(resolver);
+    }
+    else {
+        resolver = mill_dns_resolver;
+        using_mill_resolver = 1;
+    }
     /* Let's do asynchronous DNS query here. */
     mill_assert(port >= 0 && port <= 0xffff);
     char portstr[8];
@@ -275,7 +286,7 @@ ipaddr ipremote(const char *name, int port, int mode, int64_t deadline) {
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = PF_UNSPEC;
     struct dns_addrinfo *ai = dns_ai_open(name, portstr, DNS_T_A, &hints,
-        mill_dns_resolver, &rc);
+        resolver, &rc);
     mill_assert(ai);
     struct addrinfo *ipv4 = NULL;
     struct addrinfo *ipv6 = NULL;
@@ -292,6 +303,10 @@ ipaddr ipremote(const char *name, int port, int mode, int64_t deadline) {
             fdclean(fd);
             if(mill_slow(!events)) {
                 errno = ETIMEDOUT;
+                dns_ai_close(ai);
+                if(!using_mill_resolver)
+                    dns_res_close(resolver);
+                using_mill_resolver = 0;
                 return addr;
             }
             mill_assert(events == FDW_IN);
@@ -329,21 +344,22 @@ ipaddr ipremote(const char *name, int port, int mode, int64_t deadline) {
         struct sockaddr_in *inaddr = (struct sockaddr_in*)&addr;
         memcpy(inaddr, ipv4->ai_addr, sizeof (struct sockaddr_in));
         inaddr->sin_port = htons(port);
-        dns_ai_close(ai);
         errno = 0;
-        return addr;
     }
-    if(ipv6) {
+    else if(ipv6) {
         struct sockaddr_in6 *inaddr = (struct sockaddr_in6*)&addr;
         memcpy(inaddr, ipv6->ai_addr, sizeof (struct sockaddr_in6));
         inaddr->sin6_port = htons(port);
-        dns_ai_close(ai);
         errno = 0;
-        return addr;
+    }
+    else {
+        ((struct sockaddr*)&addr)->sa_family = AF_UNSPEC;
+        errno = EADDRNOTAVAIL;
     }
     dns_ai_close(ai);
-    ((struct sockaddr*)&addr)->sa_family = AF_UNSPEC;
-    errno = EADDRNOTAVAIL;
+    if(!using_mill_resolver)
+        dns_res_close(resolver);
+    using_mill_resolver = 0;
     return addr;
 }
 
