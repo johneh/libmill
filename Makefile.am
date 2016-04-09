@@ -42,6 +42,7 @@ libmill_la_SOURCES = \
     ip.c \
     list.h \
     list.c \
+    mfork.c \
     poller.h \
     poller.c \
     slist.h \
@@ -93,7 +94,10 @@ check_PROGRAMS = \
     tests/signals\
     tests/overload\
     tests/ip\
-    tests/file
+    tests/file\
+    tests/mfork1\
+    tests/mfork2\
+    tests/mfork3
 
 LDADD = libmill.la
 

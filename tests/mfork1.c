@@ -1,6 +1,6 @@
 /*
 
-  Copyright (c) 2015 Martin Sustrik
+  Copyright (c) 2016 Martin Sustrik
 
   Permission is hereby granted, free of charge, to any person obtaining a copy
   of this software and associated documentation files (the "Software"),
@@ -22,22 +22,48 @@
 
 */
 
-#ifndef MILL_POLLER_INCLUDED
-#define MILL_POLLER_INCLUDED
+#include <errno.h>
+#include <assert.h>
+#include <stdio.h>
+#include <sys/wait.h>
 
-void mill_poller_init(void);
+#include "../libmill.h"
 
-/* poller.c also implements mill_wait() and mill_fdwait() declared
-   in libmill.h. */
+int forked = 0;
+int worker_running = 0;
 
-/* Wait till at least one coroutine is resumed. If block is set to 0 the
-   function will poll for events and return immediately. If it is set to 1
-   it will block until there's at least one event to process. */
-void mill_wait(int block);
+coroutine void worker(void) {
+    while(1) {
+        if(forked)
+            break;
+        yield();
+    }
+    worker_running = 1;
+}
 
-/* Called in the child process after fork to create a fresh new pollset
-   independent from the parent's pollset. */
-void mill_poller_postfork(void);
+int main() {
+    /* Start second coroutine before forking. */
+    go(worker());
+    /* Fork. */
+    pid_t pid = mfork();
+    assert(pid != -1);
+    /* Parent waits for the child. */
+    if(pid > 0) {
+        int status;
+        pid = waitpid(pid, &status, 0);
+        assert(pid != -1);
+        assert(WIFEXITED(status));
+        assert(WEXITSTATUS(status) == 0);
+        return 0;
+    }
 
-#endif
+    /* Child tries to make sure that there's only one coroutine running. */
+    forked = 1; 
+    int i;
+    for(i = 0; i != 20; ++i)
+        yield();
+    assert(!worker_running);
+
+    return 0;
+}
 

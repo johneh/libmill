@@ -1,6 +1,6 @@
 /*
 
-  Copyright (c) 2015 Martin Sustrik
+  Copyright (c) 2016 Martin Sustrik
 
   Permission is hereby granted, free of charge, to any person obtaining a copy
   of this software and associated documentation files (the "Software"),
@@ -22,22 +22,46 @@
 
 */
 
-#ifndef MILL_POLLER_INCLUDED
-#define MILL_POLLER_INCLUDED
+#include <errno.h>
+#include <assert.h>
+#include <stdio.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
-void mill_poller_init(void);
+#include "../libmill.h"
 
-/* poller.c also implements mill_wait() and mill_fdwait() declared
-   in libmill.h. */
+int event = 0;
 
-/* Wait till at least one coroutine is resumed. If block is set to 0 the
-   function will poll for events and return immediately. If it is set to 1
-   it will block until there's at least one event to process. */
-void mill_wait(int block);
+coroutine void worker(int fd) {
+    int rc = fdwait(fd, FDW_IN, -1);
+    assert(rc == FDW_IN);
+    event = 1;
+}
 
-/* Called in the child process after fork to create a fresh new pollset
-   independent from the parent's pollset. */
-void mill_poller_postfork(void);
+int main() {
+    int fds[2];
+    int rc = pipe(fds);
+    assert(rc == 0);
+    go(worker(fds[0]));
+    /* Fork. */
+    pid_t pid = mfork();
+    assert(pid != -1);
+    /* Parent waits for the child. */
+    if(pid > 0) {
+        ssize_t sz = write(fds[1], "A", 1);
+        assert(sz == 1);
+        int status;
+        pid = waitpid(pid, &status, 0);
+        assert(pid != -1);
+        assert(WIFEXITED(status));
+        assert(WEXITSTATUS(status) == 0);
+        return 0;
+    }
 
-#endif
+    /* Child waits to see whether the timer was properly removed. */
+    msleep(now() + 200);
+    assert(!event);
+
+    return 0;
+}
 

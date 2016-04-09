@@ -151,3 +151,7 @@ int mill_timer_fire(void) {
     return fired;
 }
 
+void mill_timer_postfork(void) {
+    mill_list_init(&mill_timers);
+}
+

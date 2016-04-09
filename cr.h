@@ -61,7 +61,9 @@ struct mill_cr {
     enum mill_state state;
 
     /* The coroutine is stored in this list if it is not blocked and it is
-       waiting to be executed. */
+       waiting to be executed. In such case 'is_ready' is set to 1, otherwise
+       it's set to 0. */
+    int is_ready;
     struct mill_slist_item ready;
 
     /* If the coroutine is waiting for a deadline, it uses this timer. */
@@ -122,5 +124,9 @@ void mill_resume(struct mill_cr *cr, int result);
 /* Returns pointer to the value buffer. The returned buffer is guaranteed
    to be at least 'size' bytes long. */
 void *mill_valbuf(struct mill_cr *cr, size_t size);
+
+/* Called in the child process after fork to stop all the coroutines 
+   inherited from the parent. */
+void mill_cr_postfork(void);
 
 #endif
